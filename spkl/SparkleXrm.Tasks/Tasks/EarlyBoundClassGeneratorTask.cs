@@ -9,13 +9,21 @@ using SparkleXrm.Tasks.Config;
 using System.IO;
 using System.Diagnostics;
 using SparkleXrm.Tasks.CrmSvcUtil;
+using DLaB.EarlyBoundGenerator;
 
 namespace SparkleXrm.Tasks
 {
     public class EarlyBoundClassGeneratorTask : BaseTask
     {
-        public string ConectionString {get;set;}
+        public string ConectionString { get; set; }
         private string _folder;
+
+        protected string targetfolder;
+        protected string crmsvcutilPath;
+        protected string crmsvcutilFolder;
+
+        protected EarlyBoundTypeConfig[] earlyBoundTypeConfigs;
+
         public EarlyBoundClassGeneratorTask(IOrganizationService service, ITrace trace) : base(service, trace)
         {
         }
@@ -26,27 +34,40 @@ namespace SparkleXrm.Tasks
 
         protected override void ExecuteInternal(string folder, OrganizationServiceContext ctx)
         {
-           
+
             _trace.WriteLine("Searching for plugin config in '{0}'", folder);
             var configs = ServiceLocator.ConfigFileFactory.FindConfig(folder);
 
             foreach (var config in configs)
             {
                 _trace.WriteLine("Using Config '{0}'", config.filePath);
-               
-                CreateEarlyBoundTypes(ctx, config);
+
+                CreateEarlyBound(ctx, config);
             }
             _trace.WriteLine("Processed {0} config(s)", configs.Count);
-  
+
         }
 
-        public void CreateEarlyBoundTypes(OrganizationServiceContext ctx, ConfigFile config)
+        public void CreateEarlyBound(OrganizationServiceContext ctx, ConfigFile config)
         {
-            _folder = config.filePath;
+            this.earlyBoundTypeConfigs = config.GetEarlyBoundConfig(this.Profile);
 
+            foreach (var earlyboundconfig in this.earlyBoundTypeConfigs)
+            {
+                if (!string.IsNullOrEmpty(earlyboundconfig.earlyBoundGeneratorSettings))
+                {
+                    CreateEarlyBoundTypesDLB(ctx, config, earlyboundconfig.earlyBoundGeneratorSettings);
+                    return;
+                };
+            }
+            CreateEarlyBoundTypes(ctx, config);
+        }
+
+        protected void GetSvcUtilLocation()
+        {
             // locate the CrmSvcUtil package folder
             var targetfolder = ServiceLocator.DirectoryService.GetApplicationDirectory();
-            
+
             // If we are running in VS, then move up past bin/Debug
             if (targetfolder.Contains(@"bin\Debug") || targetfolder.Contains(@"bin\Release"))
             {
@@ -62,6 +83,30 @@ namespace SparkleXrm.Tasks
                 throw new SparkleTaskException(SparkleTaskException.ExceptionTypes.UTILSNOTFOUND,
                     $"Cannot locate CrmSvcUtil at '{crmsvcutilPath}' - run Install-Package Microsoft.CrmSdk.CoreTools");
             }
+        }
+
+        private void CreateEarlyBoundTypesDLB(OrganizationServiceContext ctx, ConfigFile config, string ebg_settings)
+        {
+            var ebgConfig = DLaB.EarlyBoundGenerator.Settings.EarlyBoundGeneratorConfig.Load(ebg_settings);
+
+            GetSvcUtilLocation();
+
+            ebgConfig.ConnectionString = ConectionString;
+            ebgConfig.CrmSvcUtilRealtiveRootPath = crmsvcutilFolder;
+            ebgConfig.CrmSvcUtilRelativePath = "crmsvcutil.exe";
+            ebgConfig.RootPath = Path.GetDirectoryName(Path.GetFullPath(ebg_settings));
+
+            var logic = new DLaB.EarlyBoundGenerator.Logic(ebgConfig);
+
+            // FIXME: There's no logging from here on, because all the logging occurs within ExecuteAll().
+            logic.ExecuteAll();
+        }
+
+        public void CreateEarlyBoundTypes(OrganizationServiceContext ctx, ConfigFile config)
+        {
+            _folder = config.filePath;
+
+            GetSvcUtilLocation();
 
             // Copy the filtering assembly
             var filteringAssemblyPathString = ServiceLocator.DirectoryService.SimpleSearch(targetfolder + @"\..\..", "spkl.CrmSvcUtilExtensions.dll");
@@ -79,8 +124,7 @@ namespace SparkleXrm.Tasks
                 File.Copy(filteringAssemblyPath.FullName, targetFilteringPath, true);
             }
 
-            var earlyBoundTypeConfigs = config.GetEarlyBoundConfig(this.Profile);
-            foreach (var earlyboundconfig in earlyBoundTypeConfigs)
+            foreach (var earlyboundconfig in this.earlyBoundTypeConfigs)
             {
                 // Create config and copy to the CrmSvcUtil folder
                 var configXml = $@"<?xml version=""1.0"" encoding=""utf-8"" ?>

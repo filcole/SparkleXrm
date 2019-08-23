@@ -57,6 +57,15 @@
     "earlyboundtypes": [
         {
             /*
+            Path to the settings created by the XrmToolbox earlybound generator. 
+            First run the XrmToolbox Early Bound Generator, and then take the settings file output by it and 
+            add include in your projects source control. 
+            If an earlyBoundGeneratorSettings is specified it will generate classes using Daryl LaBars Early 
+            Bound Generator in preference to the original spkl early bound generator method.  Only if 
+            earlyBoundGeneratorSettings is unset will the remaining earlyboundtypes configuration be considered.
+            */
+            "earlyBoundGeneratorSettings": "ebg_settings.xml",
+            /*
             Comma seperate list of entity logical names.
             I've not provided support for -all- entities because this results in unneccessarily large plugins!
             */
