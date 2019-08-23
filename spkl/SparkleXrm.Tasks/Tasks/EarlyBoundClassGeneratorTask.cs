@@ -87,6 +87,10 @@ namespace SparkleXrm.Tasks
 
         private void CreateEarlyBoundTypesDLB(OrganizationServiceContext ctx, ConfigFile config, string ebg_settings)
         {
+            var logger = DLaB.Log.Logger.Instance;
+
+            logger.OnLog += LogHandler;
+
             var ebgConfig = DLaB.EarlyBoundGenerator.Settings.EarlyBoundGeneratorConfig.Load(ebg_settings);
 
             GetSvcUtilLocation();
@@ -96,10 +100,15 @@ namespace SparkleXrm.Tasks
             ebgConfig.CrmSvcUtilRelativePath = "crmsvcutil.exe";
             ebgConfig.RootPath = Path.GetDirectoryName(Path.GetFullPath(ebg_settings));
 
+            
             var logic = new DLaB.EarlyBoundGenerator.Logic(ebgConfig);
-
-            // FIXME: There's no logging from here on, because all the logging occurs within ExecuteAll().
+            
             logic.ExecuteAll();
+        }
+
+        private void LogHandler(DLaB.Log.LogMessageInfo info)
+        {
+            _trace.WriteLine(info.Detail);
         }
 
         public void CreateEarlyBoundTypes(OrganizationServiceContext ctx, ConfigFile config)
